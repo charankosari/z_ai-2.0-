@@ -8,7 +8,9 @@ from langdetect import detect, DetectorFactory
 app = Flask(__name__)
 socketio = SocketIO(app, async_mode="gevent", cors_allowed_origins="*")
 
-
+# Set your API keys here
+GROQ_API_KEY = 'api'  # Replace with your actual Groq API key
+SARVAM_SUBSCRIPTION_KEY = 'api'
 
 # Set your API keys here
 
@@ -175,7 +177,8 @@ app = Flask(__name__)
 socketio = SocketIO(app)
 
 # Set your API keys here
-
+GROQ_API_KEY = 'api'  # Replace with your actual Groq API key
+SARVAM_SUBSCRIPTION_KEY = 'api'
 # Ensure reproducible results for langdetect
 DetectorFactory.seed = 0
 
