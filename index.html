@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Talk and Listen</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+      }
+      button {
+        margin: 5px;
+        padding: 10px 15px;
+        font-size: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Talk and Listen</h1>
+    <!-- Button to request microphone permissions -->
+    <button id="permButton">Request Permissions</button>
+    <!-- Controls will be shown only after permissions are granted -->
+    <div id="controls" style="display: none">
+      <button id="startButton">Start Talking</button>
+      <button id="stopButton" disabled>Stop Talking</button>
+    </div>
+    <p id="status">Press "Request Permissions" to begin.</p>
+    <h2>Server Response</h2>
+    <audio id="audioResponse" controls></audio>
+
+    <!-- Socket.IO client library -->
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <script>
+      // Connect to the Socket.IO server
+      const socket = io("http://127.0.0.1:5000");
+
+      const permButton = document.getElementById("permButton");
+      const controlsDiv = document.getElementById("controls");
+      const startButton = document.getElementById("startButton");
+      const stopButton = document.getElementById("stopButton");
+      const status = document.getElementById("status");
+      const audioResponse = document.getElementById("audioResponse");
+      let mediaRecorder;
+
+      // Request microphone permissions
+      permButton.addEventListener("click", () => {
+        navigator.mediaDevices
+          .getUserMedia({ audio: true })
+          .then((stream) => {
+            console.log("Microphone access granted.");
+            mediaRecorder = new MediaRecorder(stream);
+
+            mediaRecorder.ondataavailable = function (event) {
+              if (event.data && event.data.size > 0) {
+                event.data.arrayBuffer().then((buffer) => {
+                  socket.emit("audio_chunk", buffer);
+                  console.log("Sent audio chunk of size:", buffer.byteLength);
+                });
+              }
+            };
+
+            mediaRecorder.onstart = function () {
+              status.textContent = "Recording...";
+            };
+
+            mediaRecorder.onstop = function () {
+              status.textContent =
+                "Recording stopped. Sending data to server...";
+              socket.emit("audio_stream_end", { language: "hi-IN" });
+            };
+
+            status.textContent =
+              "Permissions granted. Click 'Start Talking' to begin.";
+            controlsDiv.style.display = "block";
+            permButton.disabled = true;
+          })
+          .catch((err) => {
+            console.error("Microphone access error:", err);
+            status.textContent = "Microphone access error: " + err;
+          });
+      });
+
+      startButton.addEventListener("click", () => {
+        if (mediaRecorder && mediaRecorder.state === "inactive") {
+          mediaRecorder.start(1000); // timeslice of 1 second
+          startButton.disabled = true;
+          stopButton.disabled = false;
+        }
+      });
+
+      stopButton.addEventListener("click", () => {
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+          mediaRecorder.stop();
+          startButton.disabled = false;
+          stopButton.disabled = true;
+        }
+      });
+
+      socket.on("audio_response", (data) => {
+        console.log("Received audio response from server.");
+        // Use a FileReader to convert the binary data into text
+        const blobForText = new Blob([data]);
+        const reader = new FileReader();
+        reader.onload = function (event) {
+          const text = event.target.result;
+          try {
+            // Try parsing the text as JSON
+            const json = JSON.parse(text);
+            if (json.audios && json.audios.length > 0) {
+              // Assume the audio is a base64-encoded string in the first element
+              const base64Audio = json.audios[0];
+              // Decode the base64 string into binary data
+              const binaryString = window.atob(base64Audio);
+              const len = binaryString.length;
+              const bytes = new Uint8Array(len);
+              for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+              }
+              // Create a Blob from the decoded bytes
+              const audioBlob = new Blob([bytes], { type: "audio/wav" });
+              const url = URL.createObjectURL(audioBlob);
+              audioResponse.src = url;
+              status.textContent =
+                "Received audio response from server. Playing audio...";
+              audioResponse.play().catch((error) => {
+                console.error("Playback error:", error);
+                status.textContent = "Playback error: " + error.message;
+              });
+            } else {
+              status.textContent = "Received JSON without audio data.";
+            }
+          } catch (e) {
+            // If JSON parsing fails, assume the data is raw binary audio
+            const blob = new Blob([data], { type: "audio/wav" });
+            const url = URL.createObjectURL(blob);
+            audioResponse.src = url;
+            status.textContent =
+              "Received audio response from server. Playing audio...";
+            audioResponse.play().catch((error) => {
+              console.error("Playback error:", error);
+              status.textContent = "Playback error: " + error.message;
+            });
+          }
+        };
+        reader.readAsText(blobForText);
+      });
+
+      socket.on("chunk_received", (msg) => {
+        console.log("Chunk received confirmation:", msg);
+      });
+
+      socket.on("error", (err) => {
+        console.error("Error from server:", err);
+        status.textContent = "Error: " + err.message;
+      });
+    </script>
+  </body>
+</html>
