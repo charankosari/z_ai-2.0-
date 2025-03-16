@@ -6,4 +6,5 @@ langdetect==1.0.9
 eventlet==0.33.0
 werkzeug==2.2.2
 groq
+dotenv
 gevent-websocket
